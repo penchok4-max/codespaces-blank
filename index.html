@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎯 3D 전세계 지구본 다트 여행</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://unpkg.com/topojson-client@3"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      font-family: 'Pretendard', sans-serif;
+      background: radial-gradient(circle at center, #0f172a, #020617);
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* 헤더 텍스트 애니메이션 설정 */
+    .header-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.8s ease;
+      z-index: 10;
+    }
+
+    .header-container.shift-up {
+      transform: translateY(-90px) scale(0.85);
+      opacity: 0.9;
+    }
+
+    h1 {
+      margin-bottom: 6px;
+      font-size: 2rem;
+      color: #38bdf8;
+      text-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+    }
+
+    p.sub-title {
+      margin-bottom: 20px;
+      color: #94a3b8;
+    }
+
+    .stage {
+      position: relative;
+      width: 320px;
+      height: 320px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .globe-viewport {
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(circle at 30% 30%, #38bdf8, #0284c7, #093868);
+      box-shadow: 
+        inset -30px -30px 50px rgba(0, 0, 0, 0.85),
+        inset 10px 10px 25px rgba(255, 255, 255, 0.35),
+        0 0 35px rgba(56, 189, 248, 0.3);
+      border: 3px solid #38bdf8;
+      transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    #globeSvg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .graticule { fill: none; stroke: rgba(255, 255, 255, 0.15); stroke-width: 0.5px; }
+    .country { fill: #22c55e; stroke: #15803d; stroke-width: 0.5px; transition: fill 0.3s ease; }
+    
+    .country.selected-country {
+      fill: #ef4444 !important;
+      stroke: #b91c1c !important;
+      stroke-width: 1px;
+    }
+
+    .dart-container {
+      position: absolute;
+      top: 320px;
+      left: 50%;
+      transform: translateX(-50%);
+      cursor: grab;
+      z-index: 20;
+      touch-action: none;
+    }
+
+    .dart-container:active { cursor: grabbing; }
+
+    .dart-wrapper {
+      width: 45px;
+      height: 75px;
+      transition: transform 0.05s ease-out;
+      transform-origin: 50% 0px; 
+    }
+
+    .dart-wrapper.flying {
+      transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    @keyframes wobbleDart {
+      0% { transform: translate(var(--tx), var(--ty)) scale(0.85) rotate(0deg); }
+      20% { transform: translate(var(--tx), var(--ty)) scale(0.85) rotate(-14deg); }
+      40% { transform: translate(var(--tx), var(--ty)) scale(0.85) rotate(10deg); }
+      60% { transform: translate(var(--tx), var(--ty)) scale(0.85) rotate(-5deg); }
+      80% { transform: translate(var(--tx), var(--ty)) scale(0.85) rotate(2deg); }
+      100% { transform: translate(var(--tx), var(--ty)) scale(0.85) rotate(0deg); }
+    }
+
+    .dart-wrapper.wobbling {
+      animation: wobbleDart 0.8s ease-in-out forwards;
+    }
+
+    .guide-text {
+      margin-top: 35px;
+      font-size: 0.95rem;
+      color: #facc15;
+      transition: opacity 0.5s ease;
+    }
+
+    .guide-text.hide {
+      opacity: 0;
+    }
+
+    .result-card {
+      position: absolute;
+      bottom: 20px;
+      width: 330px;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 16px;
+      overflow: hidden;
+      text-align: center;
+      opacity: 0;
+      transform: translateY(30px) scale(0.9);
+      transition: all 0.5s ease;
+      pointer-events: none;
+      z-index: 30;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    .result-card.show {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .flag-box {
+      width: 100%;
+      height: 140px;
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+    }
+
+    .result-flag-img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    .result-info { padding: 12px 18px 16px; }
+    .result-destination { font-size: 1.3rem; font-weight: bold; color: #facc15; margin-bottom: 4px; }
+    .result-desc { font-size: 0.85rem; color: #cbd5e1; margin-bottom: 12px; }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      font-size: 0.82rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .info-btn { color: #ffffff; background-color: #0284c7; }
+    .info-btn:hover { background-color: #0369a1; }
+
+    .reset-btn { color: #0f172a; background-color: #38bdf8; }
+    .reset-btn:hover { background-color: #7dd3fc; }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      z-index: 100;
+    }
+
+    .modal-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-content {
+      width: 90%;
+      max-width: 420px;
+      background: #1e293b;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      transform: scale(0.9);
+      transition: transform 0.3s ease;
+    }
+
+    .modal-overlay.show .modal-content {
+      transform: scale(1);
+    }
+
+    .modal-flag-box {
+      width: 100%;
+      height: 140px;
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-hero-flag {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 6px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
+
+    .modal-body {
+      padding: 18px 20px 20px;
+    }
+
+    .modal-title {
+      font-size: 1.4rem;
+      color: #facc15;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+
+    .info-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 16px;
+      text-align: left;
+    }
+
+    .info-item {
+      background: rgba(15, 23, 42, 0.6);
+      padding: 9px 12px;
+      border-radius: 10px;
+      border-left: 3px solid #38bdf8;
+    }
+
+    .info-label {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-bottom: 2px;
+    }
+
+    .info-val {
+      font-size: 0.88rem;
+      color: #ffffff;
+      font-weight: 500;
+      line-height: 1.35;
+    }
+
+    .modal-close-btn {
+      width: 100%;
+      padding: 10px;
+      font-size: 0.88rem;
+      font-weight: bold;
+      color: #0f172a;
+      background: #38bdf8;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-container" id="headerContainer">
+    <h1>지구본 다트 여행</h1>
+    <p class="sub-title">다트를 당겼다 놓아 전 세계로 여행을 떠나세요!</p>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="globe-viewport" id="globeViewport">
+      <svg id="globeSvg" viewBox="0 0 280 280"></svg>
+    </div>
+
+    <div class="dart-container" id="dartContainer">
+      <div class="dart-wrapper" id="dartWrapper">
+        <svg viewBox="0 0 100 160" width="100%" height="100%">
+          <polygon points="50,0 45,45 55,45" fill="#e2e8f0"/>
+          <rect x="44" y="45" width="12" height="55" rx="3" fill="#ef4444"/>
+          <rect x="42" y="60" width="16" height="6" fill="#facc15"/>
+          <rect x="42" y="80" width="16" height="6" fill="#facc15"/>
+          <path d="M 50 100 L 15 155 L 46 125 Z" fill="#ef4444"/>
+          <path d="M 50 100 L 85 155 L 54 125 Z" fill="#dc2626"/>
+          <path d="M 50 100 L 50 160 L 54 125 Z" fill="#b91c1c"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="guide-text" id="guideText">👇 다트를 아래로 당긴 후 놓아 전 세계로 떠나세요!</div>
+
+  <div class="result-card" id="resultCard">
+    <div class="flag-box">
+      <img src="" alt="국기" class="result-flag-img" id="destImg">
+    </div>
+    <div class="result-info">
+      <div class="result-destination" id="destName">-</div>
+      <div class="result-desc" id="destDesc">-</div>
+      <div class="btn-group">
+        <button class="btn info-btn" onclick="openDetailModal()">여행 정보 보기 ✈️</button>
+        <button class="btn reset-btn" onclick="resetGame()">다시 던지기</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-content">
+      <div class="modal-flag-box">
+        <img src="" alt="국기" class="modal-hero-flag" id="modalHeroImg">
+      </div>
+      <div class="modal-body">
+        <div class="modal-title" id="modalTitle">국가 이름</div>
+        <div class="info-list">
+          <div class="info-item">
+            <div class="info-label">🏛️ 수도</div>
+            <div class="info-val" id="infoCapital">-</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">🌦️ 기후 & 문화 특징</div>
+            <div class="info-val" id="infoFeature">-</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">📍 수도 외 주요 여행지</div>
+            <div class="info-val" id="infoSpots">-</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">🍲 대표 전통 음식</div>
+            <div class="info-val" id="infoFood">-</div>
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="closeDetailModal()">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const isoNumericToAlpha2 = {
+      "004": "af", "008": "al", "012": "dz", "024": "ao", "010": "aq", "032": "ar", "051": "am", "036": "au",
+      "040": "at", "031": "az", "044": "bs", "050": "bd", "112": "by", "056": "be", "084": "bz", "204": "bj",
+      "064": "bt", "068": "bo", "070": "ba", "072": "bw", "076": "br", "096": "bn", "100": "bg", "854": "bf",
+      "108": "bi", "116": "kh", "120": "cm", "124": "ca", "140": "cf", "148": "td", "152": "cl", "156": "cn",
+      "170": "co", "178": "cg", "180": "cd", "188": "cr", "191": "hr", "192": "cu", "196": "cy", "203": "cz",
+      "208": "dk", "262": "dj", "214": "do", "218": "ec", "818": "eg", "222": "sv", "232": "er", "233": "ee",
+      "231": "et", "242": "fj", "246": "fi", "250": "fr", "266": "ga", "270": "gm", "268": "ge", "276": "de",
+      "288": "gh", "300": "gr", "320": "gt", "324": "gn", "328": "gy", "332": "ht", "340": "hn", "348": "hu",
+      "352": "is", "356": "in", "360": "id", "364": "ir", "368": "iq", "372": "ie", "376": "il", "380": "it",
+      "384": "ci", "388": "jm", "392": "jp", "400": "jo", "398": "kz", "404": "ke", "408": "kp", "410": "kr",
+      "414": "kw", "417": "kg", "418": "la", "428": "lv", "422": "lb", "434": "ly", "440": "lt", "442": "lu",
+      "450": "mg", "454": "mw", "458": "my", "466": "ml", "470": "mt", "478": "mr", "484": "mx", "498": "md",
+      "496": "mn", "499": "me", "504": "ma", "508": "mz", "104": "mm", "516": "na", "524": "np", "528": "nl",
+      "554": "nz", "558": "ni", "562": "ne", "566": "ng", "578": "no", "512": "om", "586": "pk", "591": "pa",
+      "598": "pg", "600": "py", "604": "pe", "608": "ph", "616": "pl", "620": "pt", "634": "qa", "642": "ro",
+      "643": "ru", "646": "rw", "682": "sa", "686": "sn", "688": "rs", "694": "sl", "702": "sg", "703": "sk",
+      "705": "si", "706": "so", "710": "za", "728": "ss", "724": "es", "144": "lk", "729": "sd", "740": "sr",
+      "752": "se", "756": "ch", "760": "sy", "158": "tw", "762": "tj", "834": "tz", "764": "th", "626": "tl",
+      "768": "tg", "780": "tt", "788": "tn", "792": "tr", "795": "tm", "800": "ug", "804": "ua", "784": "ae",
+      "826": "gb", "840": "us", "858": "uy", "860": "uz", "862": "ve", "704": "vn", "887": "ye", "894": "zm", "716": "zw"
+    };
+
+    const countryDetails = {
+      "아프가니스탄": { capital: "카불", feature: "건조한 건조/고산 기후 및 카펫/실크로드 역사 문화", spots: "반데 아미르 국립공원, 바미안 계곡", food: "카불리 팔라우(Kabuli Pulao)" },
+      "알바니아": { capital: "티라나", feature: "지중해성 기후 및 발칸반도의 이슬람/가톨릭 공존 문화", spots: "베라트 고도시, 사란더 해변", food: "타브 코시(Tavë Kosi)" },
+      "알제리": { capital: "알제", feature: "건조한 사하라 사막 기후 및 아랍/베르베르 전통 문화", spots: "타실리 나제르 국립공원, 콘스탄틴", food: "쿠스쿠스(Couscous)" },
+      "앙골라": { capital: "루안다", feature: "열대 사바나 기후 및 포르투갈 영향의 포크 음악/춤 문화", spots: "칼란둘라 폭포, 벵겔라 해변", food: "무암바 드 갈리냐(Muamba de Galinha)" },
+      "남극": { capital: "해당 없음 (연구기지)", feature: "극지 빙하 기후 및 과학 연구진 모험 존", spots: "맥머도 기지, 남극점, 킹조지 섬", food: "고칼로리 연구원 식단" },
+      "아르헨티나": { capital: "부에노스아이레스", feature: "온대/파타고니아 기후 및 열정적인 탱고/축구 문화", spots: "이구아수 폭포, 바릴로체, 우수아이아", food: "아사도(Asado), 엠파나다" },
+      "아르메니아": { capital: "예레반", feature: "대륙성 고산 기후 및 세계 최초 가톨릭 국교 역사 문화", spots: "세반 호수, 타테브 수녀원", food: "호로바츠(Khorovats), 라바시" },
+      "호주": { capital: "캔버라", feature: "건조 및 온대 해양성 기후와 한가로운 항구 문화", spots: "시드니 오페라 하우스, 울루루, 멜버른", food: "미트파이, 피시 앤 칩스, 베지마이트" },
+      "오스트리아": { capital: "비엔나", feature: "온대 대륙성 기후 및 클래식 음악/궁전 예술 문화", spots: "할슈타트, 잘츠부르크, 인스부르크", food: "비너 슈니첼(Wiener Schnitzel), 사허토르테" },
+      "아제르바이잔": { capital: "바쿠", feature: "반건조 지중해성 기후 및 불의 나라 카스피해 문화", spots: "고부스탄 암각화, 셰키 유적지", food: "플로브(Plov), 도르마" },
+      "바하마": { capital: "나소", feature: "열대 해양성 기후 및 에메랄드빛 카리브해 휴양 문화", spots: "돼지 섬(Pig Beach), 파라다이스 아일랜드", food: "콩크 샐러드(Conch Salad)" },
+      "방글라데시": { capital: "다카", feature: "열대 몬순 기후 및 맹그로브 숲과 차 재배 문화", spots: "순다르반스 국립공원, 콕스바자르 해변", food: "카치 비리야니(Kacchi Biryani)" },
+      "벨라루스": { capital: "민스크", feature: "냉대 대륙성 기후 및 풍부한 침엽수림과 슬라브 전통 문화", spots: "미르 성, 비아워비에자 숲", food: "드라니키(Draniki 감자전)" },
+      "벨기에": { capital: "브뤼셀", feature: "서안해양성 기후 및 와플, 초콜릿, 맥주와 중세 운하 문화", spots: "브뤼허(브뤼헤), 겐트, 안트베르펜", food: "물프리트(Mules-Frites), 벨기에 와플" },
+      "벨리즈": { capital: "벨모판", feature: "열대 우림 기후 및 마야 문명 유적과 블루홀 다이빙 문화", spots: "그레이트 블루홀, 앰버그리스 키", food: "라이스 앤 빈스(Rice and Beans)" },
+      "베냉": { capital: "포르토노보", feature: "열대 사바나 기후 및 부두교 전통과 아프리카 왕국 유적", spots: "위다 역사박물관, 펜자리 국립공원", food: "인얌 피에(Iñame pilé), 칼랄루" },
+      "부탄": { capital: "팀푸", feature: "고산 기후 및 국민총행복(GDH)을 중시하는 불교 성지 문화", spots: "파로 탁상 수녀원(호랑이 굴), 푸나카 종", food: "에마 다치(Ema Datshi 고추치즈)" },
+      "볼리비아": { capital: "수크레 (행정: 라파스)", feature: "고산 건조 기후 및 세계 최대 우유니 소금사막 문화", spots: "우유니 소금사막, 티티카카 호수", food: "살테냐(Salteña), 피케 마초" },
+      "보스니아 헤르체고비나": { capital: "사라예보", feature: "대륙성 및 지중해성 기후와 오스만 튀르크 유적 문화", spots: "모스타르 다리, 야이체 폭포", food: "체바피(Ćevapi), 부레크" },
+      "보츠와나": { capital: "가보로네", feature: "건조 사막/사바나 기후 및 오카방고 델타 야생 사파리 문화", spots: "오카방고 삼각주, 초베 국립공원", food: "세스와(Seswaa 무쇠솥 고기)" },
+      "브라질": { capital: "브라질리아", feature: "열대 우림/사바나 기후 및 삼바 카니발과 축구 문화", spots: "리우데자네이루 예수상, 이구아수 폭포, 아마존", food: "슈하스코(Churrasco), 페이조아다" },
+      "브루나이": { capital: "반다르스리브가완", feature: "열대 우림 기후 및 화려한 황금 이슬람 왕국 문화", spots: "술탄 오마르 알리 사이푸딘 모스크, 캄퐁 아예르", food: "암부야트(Ambuyat)" },
+      "불가리아": { capital: "소피아", feature: "온대 대륙성 기후 및 장미 축제와 릴라 수녀원 문화", spots: "릴라 수도원, 플로브디프 고도시", food: "바니차(Banitsa), 샵스카 샐러드" },
+      "부르키나파소": { capital: "와가두구", feature: "사헬 지대 열대 건조 기후 및 아프리카 전통 영화/공예 문화", spots: "보보디울라소, 발레 국립공원", food: "토(Tô), 벤친가(Benga)" },
+      "부룬디": { capital: "기테가", feature: "열대 고원 기후 및 전통 왕실 드럼 연주 문화", spots: "탕가니카 호수, 룬기 국립공원", food: "브로셰트(Brochette 바비큐)" },
+      "캄보디아": { capital: "프놈펜", feature: "열대 몬순 기후 및 찬란한 앙코르와트 크메르 문명", spots: "씨엠립 앙코르와트, 톤레삽 호수", food: "아목(Amok 생선커리), 록락" },
+      "카메룬": { capital: "야운데", feature: "아프리카의 축소판 다채로운 열대 기후 및 부족 음악 문화", spots: "카메룬 산, 크리비 해변", food: "엔돌레(Ndolé), 앙두이" },
+      "캐나다": { capital: "오타와", feature: "냉대/온대 기후 및 광활한 단풍나무와 로키 산맥 자연", spots: "밴프 국립공원, 나이아가라 폭포, 토론토", food: "푸틴(Poutine), 메이플 시럽" },
+      "중앙아프리카 공화국": { capital: "방기", feature: "열대 사바나 기후 및 코끼리/피그미족 자연 보존 문화", spots: "동가 생물권 보존지역, 우방기 강", food: "카사바 잎 스튜, 고조" },
+      "차드": { capital: "엔자메나", feature: "사하라 사막/사헬 건조 기후 및 차드 호수 습지 문화", spots: "엔네디 바위 산맥, 차드 호수", food: "다라바(Daraba), 자키" },
+      "칠레": { capital: "산티아고", feature: "아타카마 사막부터 파타고니아 빙하까지 다채로운 기후", spots: "토레스 델 파이네, 이스터 섬 모아이", food: "엠파나다, 파스텔 데 초클로" },
+      "중국": { capital: "베이징", feature: "넓은 국토의 다양한 기후 및 웅장한 만리장성 역사 유적", spots: "상하이 외탄, 장가계, 계림, 서안", food: "베이징 덕, 마라탕, 딤섬" },
+      "콜롬비아": { capital: "보고타", feature: "열대/고산 기후 및 최고급 커피 생산지 및 살사 댄스 문화", spots: "카르타헤나 고도시, 메데인, 커피 농장", food: "반데하 파이사(Bandeja Paisa)" },
+      "콩고 공화국": { capital: "브라자빌", feature: "열대 우림 기후 및 패션 사되르(Sapeurs) 신사 문화", spots: "오드잘라 국립공원, 디오소 계곡", food: "사카사카(Saka-Saka)" },
+      "콩고 민주 공화국": { capital: "킨샤사", feature: "세계 2위 열대 우림 기후 및 콩고 음악/고릴라 보존 구역", spots: "비룽가 국립공원, 콩고 강", food: "모암바(Moamba), 푸푸" },
+      "코스타리카": { capital: "산호세", feature: "생태 관광의 천국 열대 우림 및 '푸라 비다' 평화 문화", spots: "아레날 화산, 마누엘 안토니오 국립공원", food: "갈로 핀토(Gallo Pinto)" },
+      "크로아티아": { capital: "자그레브", feature: "아드리아해 지중해성 기후 및 붉은 지붕의 고도시 문화", spots: "두브로브니크, 플리트비체 국립공원", food: "페카(Peka), 블랙 리조또" },
+      "쿠바": { capital: "아바나", feature: "열대 해양성 기후 및 올드카, 시가, 살사 음악 낭만 문화", spots: "바라데로 해변, 트리니다드 고도시", food: "로파 비에하(Ropa Vieja)" },
+      "키프로스": { capital: "니코시아", feature: "온화한 지중해성 기후 및 아프로디테 신화와 휴양 문화", spots: "파포스 유적지, 아야 나파 해변", food: "할루미 치즈(Halloumi), 수블라" },
+      "체코": { capital: "프라하", feature: "온대 대륙성 기후 및 고딕/바로크 양식 양조 맥주 문화", spots: "체스키 크룸로프, 카를로비 바리", food: "굴라쉬(Goulash), 트르델닉(굴뚝빵)" },
+      "덴마크": { capital: "코펜하겐", feature: "온대 해양성 기후 및 안데르센 동화와 휘게(Hygge) 감성 문화", spots: "뉘하운 항구, 티볼리 공원, 오덴세", food: "스뫼레브뢰드(Smørrebrød)" },
+      "지부티": { capital: "지부티", feature: "열대 사막 기후 및 염호 아살 호수와 고래상어 스노클링", spots: "아살 호수, 아베 호수", food: "스쿠데카리스(Skoudehkaris)" },
+      "도미니카 공화국": { capital: "산토도밍고", feature: "카리브해 열대 기후 및 메렝게 음악과 리조트 휴양 문화", spots: "푸엔타 카나, 로스 하이티세스", food: "라 반데라(La Bandera)" },
+      "에콰도르": { capital: "키토", feature: "적도 고산 기후 및 진화의 신비 갈라파고스 제도 문화", spots: "갈라파고스 제도, 바뇨스 온천", food: "세비체(Ceviche), 앙코냐도" },
+      "이집트": { capital: "카이로", feature: "열대 사막 기후 및 나일강 5천년 고대 피라미드 역사 문명", spots: "룩소르 신전, 아스완, 샤름 엘 셰이크", food: "코샤리(Koshary), 풀 메담메스" },
+      "엘살바도르": { capital: "산살바도르", feature: "열대 기후 및 태평양 서핑 성지 및 화산 지형 문화", spots: "엘 툰코 서핑 해변, 루타 델 카카페", food: "푸푸사(Pupusa)" },
+      "에리트레아": { capital: "아스마라", feature: "건조 열대 기후 및 이탈리아 아르데코 건축 양식 유적", spots: "아스마라 고도시, 마사와 홍해 해변", food: "지브니(Zigni), 인제라" },
+      "에스토니아": { capital: "탈린", feature: "발트해 냉대 기후 및 디지털 선진국과 중세 탈린 올드타운", spots: "탈린 구시가지, 라헤마 국립공원", food: "물기카프사르(Mulgikapsad)" },
+      "에티오피아": { capital: "아디스아바바", feature: "열대 고원 기후 및 커피의 고향과 라리베라 암굴 교회", spots: "라리벨라 석굴교회, 다나킬 함몰지", food: "인제라(Injera), 에티오피아 커피" },
+      "피지": { capital: "수바", feature: "열대 해양성 기후 및 산호초 스쿠버다이빙과 불라(Bula) 환대 문화", spots: "데나라우 섬, 마마누카 제도", food: "코코다(Kokoda), 카바(Kava)" },
+      "핀란드": { capital: "헬싱키", feature: "냉대 습윤 기후 및 산타클로스 마을, 오로라, 사우나 문화", spots: "로바니에미 산타마을, 라플란드, 사보닌나", food: "카렐리안 파이, 연어 스프" },
+      "프랑스": { capital: "파리", feature: "온화한 서안해양성 기후 및 예술, 패션, 미식 문화의 대표 중심지", spots: "니스 해변, 루브르 박물관, 몽생미셸", food: "바게트, 에스카르고, 와인" },
+      "가봉": { capital: "리브르빌", feature: "열대 우림 기후 및 국토 10% 이상 국립공원 생태 보존 구역", spots: "로앙고 국립공원, 푸간무 국립공원", food: "푸용 드 푸앙(Poulet Nyembwe)" },
+      "감비아": { capital: "반줄", feature: "열대 사바나 기후 및 감비아 강 주변 새 관찰 조류 탐조 여행", spots: "쿠투 해변, 강변 국립공원", food: "도모다(Domoda 땅콩스튜)" },
+      "조지아": { capital: "트빌리시", feature: "코카서스 산맥 기후 및 8천년 역사 항아리 와인(크베브리) 문화", spots: "카즈베기, 바투미 흑해 휴양지", food: "하차푸리(Khachapuri), 힌칼리" },
+      "독일": { capital: "베를린", feature: "온대 대륙성 기후 및 풍부한 역사, 아우토반, 맥주 축제 문화", spots: "뮌헨, 노이슈반슈타인 성, 쾰른 대성당", food: "학세(Haxe), 브라트부르스트, 맥주" },
+      "가나": { capital: "아크라", feature: "열대 사바나 기후 및 황금 해안 및 카카오, 아프리카 음악 문화", spots: "케이프코스트 성, 카쿰 국립공원", food: "졸로프 라이스(Jollof Rice), 푸푸" },
+      "그리스": { capital: "아테네", feature: "지중해성 기후 및 고대 파르테논 신전과 산토리니 에메랄드 섬", spots: "산토리니, 미코노스, 델피 유적지", food: "수블라키(Souvlaki), 무사카" },
+      "과테말라": { capital: "과테말라시티", feature: "열대 고원 기후 및 마야 문명 유적지와 아티틀란 호수", spots: "안티구아 고도시, 티칼 마야유적", food: "페피안(Pepián 코코넛스튜)" },
+      "기니": { capital: "코나크리", feature: "열대 몬순 기후 및 서아프리카 전통 제베(Drum) 음악 문화", spots: "이소 디알로 폭포, 푸타잘롱 고원", food: "푸티 야시(Pouti Yassi)" },
+      "가이아나": { capital: "조지타운", feature: "열대 우림 기후 및 아마존 카이에투르 대폭포 생태 탐험", spots: "카이에투르 폭포, 루푸누니 사바나", food: "가이아나 페퍼폿(Pepperpot)" },
+      "아이티": { capital: "포르토프랭스", feature: "열대 기후 및 최초의 흑인 공화국 요새 문화 유적", spots: "시타델 라페리에르 요새, 자크멜", food: "그리오(Griot 튀긴 돼지고기)" },
+      "온두라스": { capital: "테구시갈파", feature: "열대 기후 및 마야 코판 유적지와 카리브해 스노클링", spots: "코판 마야유적, 로아탄 섬", food: "발레아다(Baleada)" },
+      "헝가리": { capital: "부다페스트", feature: "온대 대륙성 기후 및 도나우강 야경과 다뉴브 온천 문화", spots: "부다성, 어부의 요새, 토카이 와인촌", food: "굴라쉬(Goulash), 랑고스" },
+      "아이슬란드": { capital: "레이캬비크", feature: "한대 해양성 기후 및 화산, 빙하, 간헐천, 오로라의 천국", spots: "골든 서클, 블루라군 온천, 굴포스", food: "하카를(Hákarl), 양고기 스프" },
+      "인도": { capital: "뉴델리", feature: "열대 몬순/건조 기후 및 타지마할 역사와 다양성 문화", spots: "아그라 타지마할, 바라나시, 자이푸르", food: "치킨 커리, 난(Naan), 탄두리" },
+      "인도네시아": { capital: "자카르타", feature: "열대 우림 기후 및 1만 7천 개 섬 발리 휴양과 볼로부두르 유적", spots: "발리 섬, 족자카르타, 코모도 국립공원", food: "나시고랭(Nasi Goreng), 사테" },
+      "이란": { capital: "테헤란", feature: "건조 대륙성 기후 및 페르시아 제국 2천년 역사 및 카펫 문화", spots: "이스파한, 페르세폴리스, 쉬라즈", food: "체로 카밥(Chello Kabab)" },
+      "이라크": { capital: "바그다드", feature: "열대 건조 사막 기후 및 메소포타미아 문명 유적 역사", spots: "바빌론 유적지, 에르빌 성채", food: "마스구프(Masgouf 생선구이)" },
+      "아일랜드": { capital: "더블린", feature: "서안해양성 기후 및 초록빛 들판과 기네스 흑맥주, 켈트 문화", spots: "모허 절벽, 골웨이, 킬라니 국립공원", food: "아이리시 스튜, 기네스 맥주" },
+      "이스라엘": { capital: "예루살렘", feature: "지중해성/건조 기후 및 3대 종교 성지와 사해 수영 체험", spots: "예루살렘 구시가지, 사해, 텔아비브", food: "팔라펠(Falafel), 샤슈카" },
+      "이탈리아": { capital: "로마", feature: "지중해성 기후 및 고대 콜로세움 유적과 피렌체 르네상스 예술", spots: "베네치아, 피렌체, 포지타노, 밀라노", food: "피자, 파스타, 젤라또" },
+      "코트디부아르": { capital: "야무수크로 (경제: 아비장)", feature: "열대 사바나 기후 및 세계 1위 카카오 생산국 및 아프리카 미술", spots: "평화의 성모 대성당, 그랑바삼", food: "아티에케(Attiéké), 알로코" },
+      "자메이카": { capital: "킹스턴", feature: "열대 해양성 기후 및 레게 음악, 블루마운틴 커피와 에메랄드 해변", spots: "몬테고 베이, 네그릴 해변, 던스리버 폭포", food: "저크 치킨(Jerk Chicken)" },
+      "일본": { capital: "도쿄", feature: "온대 해양성 기후 및 후지산, 교토 청수사, 화려한 도심 식도락", spots: "교토, 오사카 도톤보리, 후지산, 삿포로", food: "초밥(스시), 라멘, 돈카츠" },
+      "요르단": { capital: "암만", feature: "건조 사막 기후 및 신비의 고대 암석 도시 페트라와 와디럼 사막", spots: "페트라 유적, 와디럼 사막, 사해", food: "만사프(Mansaf)" },
+      "카자흐스탄": { capital: "아스타나", feature: "극심한 대륙성 건조 기후 및 중앙아시아 중앙 유목민 문화", spots: "알마티 챠린 캐니언, 카인디 호수", food: "베슈바르마크(Beshbarmak)" },
+      "케냐": { capital: "나이로비", feature: "열대 사바나 기후 및 마사이마라 야생 동물 대이동 사파리", spots: "마사이마라 국립보호구역, 암보셀리", food: "우갈리(Ugali), 니아마 초마" },
+      "북한": { capital: "평양", feature: "냉대 대륙성 기후 및 백두산 자연 경관 및 공산권 특수 역사", spots: "백두산, 금강산, 개성 역사유적지", food: "평양냉면, 언감자국수" },
+      "대한민국": { capital: "서울", feature: "사계절이 명확하며 K-컬처, 첨단 IT 및 오랜 전통의 조화", spots: "제주도, 부산 해운대, 경주, 전주한옥마을", food: "비빔밥, 삼겹살, K-치킨" },
+      "쿠웨이트": { capital: "쿠웨이트시티", feature: "열대 사막 기후 및 페르시아만 석유 부국 현대 건축물", spots: "쿠웨이트 타워, 앙카라 해변", food: "마흐부스(Machboos)" },
+      "키르기스스탄": { capital: "비슈케크", feature: "대륙성 고산 기후 및 중앙아시아 톈산 산맥 설산 및 이식쿨 호수", spots: "이식쿨 호수, 알라 아르차 국립공원", food: "베슈바르마크, 샬라마" },
+      "라오스": { capital: "비엔티안", feature: "열대 몬순 기후 및 느림의 미학 루앙프라방 불교 문화", spots: "루앙프라방, 방비엥, 팍세", food: "땀막훙(파파야샐러드), 랍" },
+      "라트비아": { capital: "리가", feature: "발트해 냉대 기후 및 아르누보 양식 건축과 리가 올드타운", spots: "리가 구시가지, 룬달레 궁전", food: "스펙스(Speķis), 아스피크" },
+      "레바논": { capital: "베이루트", feature: "지중해성 기후 및 중동의 파리라 불리는 역사/와인 문화", spots: "바알벡 로마유적, 비블로스 항구", food: "키베(Kibbeh), 타불레 샐러드" },
+      "리비아": { capital: "트리폴리", feature: "사하라 사막 기후 및 고대 로마 유적 레프티스 마그나", spots: "레프티스 마그나, 가다메스 고도시", food: "바진(Bazeen), 쿠스쿠스" },
+      "리투아니아": { capital: "빌뉴스", feature: "발트해 냉대 기후 및 호수 위 붉은 트라카이 성 역사 문화", spots: "빌뉴스 올드타운, 트라카이 성", food: "체펠리나이(Cepelinai 감자만두)" },
+      "룩셈부르크": { capital: "룩셈부르크", feature: "온대 서안해양성 기후 및 요새 요새 도시와 고소득 금융 중심지", spots: "복 포요새, 비안덴 성", food: "주드 맷 가아데보넨" },
+      "마다가스카르": { capital: "안타나나리보", feature: "열대 해양성/건조 기후 및 바오밥 나무 거리와 귀여운 여우원숭이", spots: "바오밥 거리, 칭기 드 베마라하", food: "로마자바(Romazava)" },
+      "말라위": { capital: "릴롱궤", feature: "열대 고원 기후 및 아프리카의 따뜻한 심장 말라위 호수", spots: "말라위 호수 국립공원, 묜제 산", food: "시마(Nsima 곡물 묵)" },
+      "말레이시아": { capital: "쿠알라룸푸르", feature: "열대 우림 기후 및 페트로나스 타워와 다문화 미식 천국", spots: "페낭 섬, 코타키나발루, 말라카", food: "나시레막(Nasi Lemak), 락사" },
+      "말리": { capital: "바마코", feature: "사하라 사막 기후 및 흙벽돌로 지은 젠네 대모스크 문화 유적", spots: "젠네 대모스크, 도곤 도곤 마을", food: "티그아데게나(Tigadègenè)" },
+      "몰타": { capital: "발레타", feature: "지중해성 기후 및 요한 기사단 중세 요새와 지중해 다이빙", spots: "발레타 올드타운, 임디나, 블루라군", food: "토끼고기 스튜(Fenkata)" },
+      "모리타니": { capital: "누악쇼트", feature: "사하라 사막 건조 기후 및 사막 위 열차와 샹게티 사막 도서관", spots: "샹게티 사막도시, 안파크 해변", food: "티에부디엔(Thieboudienne)" },
+      "멕시코": { capital: "멕시코시티", feature: "고산 및 열대 기후와 마야/아즈텍 문명과 열정의 마리아치 음악", spots: "칸쿤 해변, 테오티우아칸 피라미드", food: "타코(Taco), 과카몰리, 또띠아" },
+      "몰도바": { capital: "키시너우", feature: "온대 대륙성 기후 및 세계 최대 지하 와인 동굴 크리코바", spots: "크리코바 와이너리, 올드 오르헤이", food: "마말리가(Mămăligă), 플라친터" },
+      "몽골": { capital: "울란바토르", feature: "건조 대륙성 기후 및 끝없는 푸른 초원, 게르, 낭만 별빛 체험", spots: "고비 사막, 테렐지 국립공원, 홉스골 호수", food: "허르호그(Khorkhog), 보즈" },
+      "몬테네그로": { capital: "포드고리차", feature: "지중해성 기후 및 피오르 모양의 코토르 만 신비한 해안 고도시", spots: "코토르 성벽, 두르미토르 국립공원", food: "카스트라디나(Kastradina)" },
+      "모로코": { capital: "라바트", feature: "지중해성 및 사막 기후와 붉은 마라케시, 푸른 셰프샤우엔", spots: "마라케시, 셰프샤우엔, 페스", food: "타진(Tagine), 쿠스쿠스" },
+      "모잠비크": { capital: "마푸투", feature: "열대 사바나 기후 및 에메랄드 빛 인도양 바자루토 에코 리조트", spots: "바자루토 군도, 토포 해변", food: "페리페리 치킨(Piri Piri Chicken)" },
+      "미얀마": { capital: "네피도", feature: "열대 몬순 기후 및 2천 여 개 불탑이 펼쳐진 바간 유적", spots: "바간 불탑 군락, 인레 호수, 양곤", food: "모힝가(Mohinga 쌀국수)" },
+      "나미비아": { capital: "빈트후크", feature: "건조 사막 기후 및 붉은 사구 나미브 사막과 스켈레톤 코스트", spots: "소수스블레이 붉은사구, 에토샤 국립공원", food: "카프라나(Kapana), 게임미트" },
+      "네팔": { capital: "카트만두", feature: "고산 히말라야 기후 및 에베레스트 트레킹과 불교/힌두교 성지", spots: "포카라, 히말라야 안나푸르나, 루비니", food: "달밧(Dal Bhat), 모모(Momo)" },
+      "네덜란드": { capital: "암스테르담", feature: "서안해양성 기후 및 운하, 자전거, 풍차와 튤립의 나라", spots: "잔세스칸스 풍차마을, 헤이그, 로테르담", food: "스트룹와플, 하링(청어)" },
+      "뉴질랜드": { capital: "웰링턴", feature: "온대 해양성 기후 및 반지의 제왕 촬영지 청정 자연과 마오리 문화", spots: "퀸스타운, 밀포드 사운드, 호비튼", food: "hangi(항이), 파블로바" },
+      "니카라과": { capital: "마나과", feature: "열대 기후 및 화산 샌드보딩과 니카라과 호수 섬 탐험", spots: "그라나다 고도시, 오메테페 화산섬", food: "갈로 핀토(Gallo Pinto)" },
+      "니제르": { capital: "니아메", feature: "사하라 사막 기후 및 사헬 지대 공예품과 아이르 산맥", spots: "아가데즈 대모스크, 니제르 강", food: "디엠브레(Djerma 스튜)" },
+      "나이지리아": { capital: "아부자 (최대도시: 라고스)", feature: "열대 기후 및 아프리카 최대 인구국 및 노리우드 영화/음악 문화", spots: "라고스 해변, 올루모 바위", food: "졸로프 라이스, 에구시 스튜" },
+      "노르웨이": { capital: "오슬로", feature: "냉대 해양성 기후 및 웅장한 송네 피오르, 피오르 해안과 오로라", spots: "베르겐, 로포텐 제도, 트롬쇠", food: "연어 구이, 브루노스트 치즈" },
+      "오만": { capital: "마스카트", feature: "열대 사막 기후 및 아라비아 신화 속 향유 및 고대 요새 문화", spots: "와디 샤브, 왈히바 사막, 니즈와", food: "슈와(Shuwa 항아리 양고기)" },
+      "파키스탄": { capital: "이스라마바드", feature: "건조/고산 기후 및 K2 훈자 계곡 실크로드 신비한 풍경", spots: "훈자 계곡, 라호르 성, 훈자 마을", food: "비리야니(Biryani), 시크 카밥" },
+      "파나마": { capital: "파나마시티", feature: "열대 해양성 기후 및 태평양과 대서양을 잇는 파나마 운하", spots: "파나마 운하, 산블라스 제도", food: "산코초(Sancocho닭고기스튜)" },
+      "파푸아뉴기니": { capital: "포트모르즈비", feature: "열대 우림 기후 및 800개 이상 부족 언어와 오지 자연 보존", spots: "코코다 트랙, 밀네 베이", food: "무무(Mumu 전통 찜요리)" },
+      "파라과이": { capital: "아순시온", feature: "열대 사바나 기후 및 마테차(테레레) 상시 소지 수분 보충 문화", spots: "이타이푸 수력발전소, 트리니다드 유적", food: "소파 파라과야(Sopa Paraguaya)" },
+      "페루": { capital: "리마", feature: "해안 건조/안데스 고산 기후 및 신비의 잉카 문명 마추픽추 유적", spots: "쿠스코, 마추픽추, 티티카카 호수", food: "세비체(Ceviche), 로모 살타도" },
+      "필리핀": { capital: "마닐라", feature: "열대 해양성 기후 및 7천 개 에메랄드빛 섬 리조트 스노클링", spots: "보라카이, 세부, 엘니도 팔라완", food: "아도보(Adobo), 레촌(Lechon)" },
+      "폴란드": { capital: "바르샤바", feature: "온대 대륙성 기후 및 쇼팽의 고향과 크라쿠프 중세 역사 유적", spots: "크라쿠프 구시가지, 비엘리치카 소금광산", food: "피에로기(Pierogi 폴란드만두)" },
+      "포르투갈": { capital: "리스본", feature: "지중해성 기후 및 대항해시대 해양 유적과 파두(Fado) 음악", spots: "포르투 와인촌, 신트라 궁전, 알가르브", food: "바칼라우(Bacalhau 대구요리), 에그타르트" },
+      "카타르": { capital: "도하", feature: "열대 사막 기후 및 초현대식 카타르 도하 야경과 사막 사파리", spots: "스카이라인 도하, 수크 와키프 시장", food: "마흐부스(Machboos)" },
+      "루마니아": { capital: "부쿠레슈티", feature: "온대 대륙성 기후 및 드라큘라 전설의 브란 성과 카르파티아 산맥", spots: "브란 성(드라큘라 성), 시기쇼아라", food: "사르말레(Sarmale), 미치" },
+      "러시아": { capital: "모스크바", feature: "대륙성 냉대 기후 및 붉은 광장 성 바실리 대성당과 발레 예술", spots: "상트페테르부르크, 바이칼 호수", food: "보르시(Borsch), 펠메니" },
+      "르완다": { capital: "키갈리", feature: "열대 고원 기후 및 천 개의 언덕의 나라 야생 마운틴고릴라", spots: "볼케이노 국립공원, 키부 호수", food: "이솜베(Isombe), 아카벤치" },
+      "사우디아라비아": { capital: "리야드", feature: "극심한 열대 사막 기후 및 이슬람 성지 메카와 알올라 암석 유적", spots: "알올라 마다인 살레, 제다 고도시", food: "캅사(Kabsa 양고기 덮밥)" },
+      "세네갈": { capital: "다카르", feature: "열대 사바나 기후 및 핑크빛 렛바 호수와 테랑가(환대) 문화", spots: "고레 섬, 렛바 핑크호수", food: "티에부디엔(Thieboudienne)" },
+      "세르비아": { capital: "베오그라드", feature: "온대 대륙성 기후 및 발칸반도 밤문화와 베오그라드 요새", spots: "베오그라드 요새, 노비사드", food: "체바피(Ćevapi), 플례스카비차" },
+      "시에라리온": { capital: "프리타운", feature: "열대 몬순 기후 및 하얀 모래사장 카리브해급 해변 풍경", spots: "씨뷰 해변, 타쿠가마 침팬지 보호구역", food: "카사바 잎 스튜" },
+      "싱가포르": { capital: "싱가포르", feature: "열대 우림 기후 및 초현대 정원 도시 가든스 바이 더 베이", spots: "마리나 베이 샌즈, 센토사 섬", food: "칠리크랩, 카야 토스트, 락사" },
+      "슬로바키아": { capital: "브라티슬라바", feature: "온대 대륙성 기후 및 타트라 산맥 설산 및 중세 고성 유적", spots: "고단 타트라 산맥, 스피시 성", food: "브린조베 할루슈키" },
+      "슬로베니아": { capital: "류블랴나", feature: "지중해성/대륙성 기후 및 동화 속 블레드 호수와 포스토이나 동굴", spots: "블레드 호수, 포스토이나 동굴", food: "크란스카 클라바사(소시지)" },
+      "소말리아": { capital: "모가디슈", feature: "열대 건조 기후 및 길게 뻗은 인도양 해안선과 향신료 무역", spots: "모가디슈 해변, 라스 게엘 암각화", food: "바리스 이스쿠리스(Bariis Isku-karis)" },
+      "남아프리카 공화국": { capital: "프리토리아 (입법: 케이프타운)", feature: "온대/지중해성 기후 및 테이블마운틴과 크루거 사파리", spots: "케이프타운, 크루거 국립공원, 와인랜드", food: "보에레보르스(Boerewors), 빌통" },
+      "남수단": { capital: "주바", feature: "열대 사바나 기후 및 나일 강 습지 지대 야생 동물 수드 습지", spots: "수드(Sudd) 습지 지대, 주바 나일강", food: "키스라(Kisra), 풀" },
+      "스페인": { capital: "마드리드", feature: "지중해성 기후 및 가우디 성당, 플라멩코 및 늦은 밤 타파스 문화", spots: "바르셀로나, 세비야, 그라나다 알함브라", food: "빠에야(Paella), 타파스, 하몬" },
+      "스리랑카": { capital: "스리자야와르데네푸라코테", feature: "열대 몬순 기후 및 실론 티 농장과 바위 요새 시기리야", spots: "시기리야 바위성, 캔디 불치사, 갤 해변", food: "코투 로티(Kottu Rotti), 실론티" },
+      "수단": { capital: "카르툼", feature: "열대 사막 기후 및 청나일 백나일 교차점 메로에 피라미드", spots: "메로에 피라미드, 백나일 강", food: "풀 메담메스(Ful Medames)" },
+      "수리남": { capital: "파라마리보", feature: "열대 우림 기후 및 네덜란드 목조 건축 유적 및 다문화 사회", spots: "파라마리보 고도시, 중앙수리남 자연보호구역", food: "모키 메시(Moksi Meti)" },
+      "스웨덴": { capital: "스톡홀름", feature: "냉대 습윤 기후 및 14개 섬의 감라스탄 올드타운과 피카(Fika) 티타임", spots: "스톡홀름 감라스탄, 키루나 오로라", food: "미트볼(Köttbullar), 링곤베리" },
+      "스위스": { capital: "베른", feature: "알프스 고산 기후 및 만년설 융프라우, 만년설 산악 열차 문화", spots: "인터라켄, 루체른, 취리히, 체르마트", food: "치즈 퐁뒤(Fondue), 라클렛" },
+      "시리아": { capital: "다마스쿠스", feature: "건조 사막/지중해성 기후 및 세계에서 가장 오래된 연속 거주 도시", spots: "다마스쿠스 구시가지, 팔미라 유적", food: "샤와르마(Shawarma), 파투쉬" },
+      "대만": { capital: "타이베이", feature: "아열대 기후 및 화련 타로코 협곡과 야시장 미식 천국", spots: "타이베이 101, 지우펀, 가오슝", food: "우육면, 소롱포(딤섬), 버블티" },
+      "타지키스탄": { capital: "두샨베", feature: "극심한 대륙성 고산 기후 및 세계의 지붕 파미르 고원 도로 트레킹", spots: "파미르 하이웨이, 이스칸데르쿨 호수", food: "쿠르토프(Qurutob)" },
+      "탄자니아": { capital: "도도마 (최대도시: 다르에스살람)", feature: "열대 사바나 기후 및 킬리만자로 산과 잔지바르 휴양 섬", spots: "세렌게티 국립공원, 킬리만자로, 잔지바르", food: "우갈리(Ugali), 칩시 마야이" },
+      "태국": { capital: "방콕", feature: "열대 사바나 기후 및 화려한 불교 사원과 미식의 야시장 문화", spots: "푸켓, 치앙마이, 파타야", food: "팟타이(Pad Thai), 똠얌꿍" },
+      "동티모르": { capital: "딜리", feature: "열대 사바나 기후 및 청정 다이빙 해변 및 고산 지대 커피 농장", spots: "아타우로 섬, 아타우로 해변", food: "바타제(Batar Daan)" },
+      "토고": { capital: "로메", feature: "열대 사바나 기후 및 카라 지방 탁티엔마 토속 흙집 마을", spots: "쿠타마쿠 토속 마을, 로메 해변", food: "후메(Fufu), 파테" },
+      "트리니다드 토바고": { capital: "포트오브스페인", feature: "열대 해양성 기후 및 스틸팬 드럼 음악과 카리브해 카니발", spots: "피죤 포인트 해변, 마라카스 베이", food: "더블스(Doubles), 펠라우" },
+      "튀니지": { capital: "튀니스", feature: "지중해성 및 사막 기후 및 고대 카르타고 유적과 시디 부 사이드", spots: "카르타고 유적, 시디 부 사이드", food: "쿠스쿠스, 브릭(Brik)" },
+      "튀르키예": { capital: "앙카라", feature: "동서양 문화가 교차하는 열기구 성지 카파도키아와 이스탄불", spots: "이스탄불 성소피아, 카파도키아, 파묵칼레", food: "케밥(Kebab), 바클라바" },
+      "투르크메니스탄": { capital: "아시가바트", feature: "열대 사막 기후 및 불타는 가스 구덩이 지옥의 문(달바자)", spots: "달바자 지옥의 문, 아시가바트 흰대리석도시", food: "이슐릭리(Ishlykly)" },
+      "우간다": { capital: "캄팔라", feature: "열대 고원 기후 및 야생 마운틴고릴라 서식지 및 빅토리아 호수", spots: "브윈디 국립공원, 앤테베", food: "마토케(Matoke 바나나 찜)" },
+      "우크라이나": { capital: "키이우", feature: "온대 대륙성 기후 및 황금빛 황금 도돔 성당과 흑토 지대 밀밭", spots: "키이우 페체르시크 수녀원, 리비우", food: "보르시(Borsch), 바레니키" },
+      "아랍에미리트": { capital: "아부다비", feature: "열대 사막 기후 및 세계 최고층 부르즈 할리파 초현대 도시", spots: "두바이 부르즈 할리파, 셰이크 자이드 모스크", food: "알 마하부스(Al Machboos)" },
+      "영국": { capital: "런던", feature: "서안해양성 기후 및 빅벤, 타워브리지 고전과 대영박물관 역사", spots: "에든버러, 옥스퍼드, 스톤헨지", food: "피시 앤 칩스, 애프터눈 티" },
+      "미국": { capital: "워싱턴 D.C.", feature: "다양한 대륙성 기후 및 뉴욕, 타임스퀘어, 그랜드캐니언 대자연", spots: "뉴욕, 그랜드 캐니언, 하와이, 라스베이거스", food: "햄버거, 바비큐, 스테이크" },
+      "우루과이": { capital: "몬테비데오", feature: "온대 자와 기후 및 아틀란티스 해안 휴양도시 푸엔타델에스테", spots: "콜로니아 델 사크라멘토, 푸엔타델에스테", food: "치비토(Chivito), 아사도" },
+      "우즈베키스탄": { capital: "타슈켄트", feature: "극심한 건조 대륙성 기후 및 푸른 실크로드의 보석 사마르칸트", spots: "사마르칸트, 부하라, 히바 고도시", food: "플로브(Plov 볶음밥), 삼사" },
+      "베네수엘라": { capital: "카라카스", feature: "열대 사바나 기후 및 세계 최고 높이 앙헬 폭포(엔젤 폭포)", spots: "앙헬 폭포, 로스 로케스 군도", food: "아레파(Arepa), 파베용 크리오요" },
+      "베트남": { capital: "하노이", feature: "아열대/열대 몬순 기후 및 에메랄드빛 하롱베이와 야시장 구시가지", spots: "다낭, 호이안, 하롱베이, 사파", food: "쌀국수(포), 반미, 분짜" },
+      "예멘": { capital: "사나", feature: "열대 사막 기후 및 진흙으로 지은 고층 점토 건축물 올드 사나", spots: "사나 구시가지, 소코트라 섬", food: "살타(Saltah)" },
+      "잠비아": { capital: "루사카", feature: "열대 고원 기후 및 세계 3대 폭포 빅토리아 대폭포 수영", spots: "빅토리아 폭포, 사우스 루앙와 국립공원", food: "시마(Nshima)" },
+      "짐바브웨": { capital: "하라레", feature: "열대 고원 기후 및 웅장한 빅토리아 폭포와 대짐바브웨 유적", spots: "빅토리아 폭포, 대짐바브웨 유적", food: "사자(Sadza)" }
+    };
+
+    const countryNameMap = {
+      "004": "아프가니스탄", "008": "알바니아", "012": "알제리", "024": "앙골라", "010": "남극",
+      "032": "아르헨티나", "051": "아르메니아", "036": "호주", "040": "오스트리아", "031": "아제르바이잔",
+      "044": "바하마", "050": "방글라데시", "112": "벨라루스", "056": "벨기에", "084": "벨리즈",
+      "204": "베냉", "064": "부탄", "068": "볼리비아", "070": "보스니아 헤르체고비나", "072": "보츠와나",
+      "076": "브라질", "096": "브루나이", "100": "불가리아", "854": "부르키나파소", "108": "부룬디",
+      "116": "캄보디아", "120": "카메룬", "124": "캐나다", "140": "중앙아프리카 공화국", "148": "차드",
+      "152": "칠레", "156": "중국", "170": "콜롬비아", "178": "콩고 공화국", "180": "콩고 민주 공화국",
+      "188": "코스타리카", "191": "크로아티아", "192": "쿠바", "196": "키프로스", "203": "체코",
+      "208": "덴마크", "262": "지부티", "214": "도미니카 공화국", "218": "에콰도르", "818": "이집트",
+      "222": "엘살바도르", "232": "에리트레아", "233": "에스토니아", "231": "에티오피아", "242": "피지",
+      "246": "핀란드", "250": "프랑스", "266": "가봉", "270": "감비아", "268": "조지아",
+      "276": "독일", "288": "가나", "300": "그리스", "320": "과테말라", "324": "기니",
+      "328": "가이아나", "332": "아이티", "340": "온두라스", "348": "헝가리", "352": "아이슬란드",
+      "356": "인도", "360": "인도네시아", "364": "이란", "368": "이라크", "372": "아일랜드",
+      "376": "이스라엘", "380": "이탈리아", "384": "코트디부아르", "388": "자메이카", "392": "일본",
+      "400": "요르단", "398": "카자흐스탄", "404": "케냐", "408": "북한", "410": "대한민국",
+      "414": "쿠웨이트", "417": "키르기스스탄", "418": "라오스", "428": "라트비아", "422": "레바논",
+      "434": "리비아", "440": "리투아니아", "442": "룩셈부르크", "450": "마다가스카르", "454": "말라위",
+      "458": "말레이시아", "466": "말리", "470": "몰타", "478": "모리타니", "484": "멕시코",
+      "498": "몰도바", "496": "몽골", "499": "몬테네그로", "504": "모로코", "508": "모잠비크",
+      "104": "미얀마", "516": "나미비아", "524": "네팔", "528": "네덜란드", "554": "뉴질랜드",
+      "558": "니카라과", "562": "니제르", "566": "나이지리아", "578": "노르웨이", "512": "오만",
+      "586": "파키스탄", "591": "파나마", "598": "파푸아뉴기니", "600": "파라과이", "604": "페루",
+      "608": "필리핀", "616": "폴란드", "620": "포르투갈", "634": "카타르", "642": "루마니아",
+      "643": "러시아", "646": "르완다", "682": "사우디아라비아", "686": "세네갈", "688": "세르비아",
+      "694": "시에라리온", "702": "싱가포르", "703": "슬로바키아", "705": "슬로베니아", "706": "소말리아",
+      "710": "남아프리카 공화국", "728": "남수단", "724": "스페인", "144": "스리랑카", "729": "수단",
+      "740": "수리남", "752": "스웨덴", "756": "스위스", "760": "시리아", "158": "대만",
+      "762": "타지키스탄", "834": "탄자니아", "764": "태국", "626": "동티모르", "768": "토고",
+      "780": "트리니다드 토바고", "788": "튀니지", "792": "튀르키예", "795": "투르크메니스탄", "800": "우간다",
+      "804": "우크라이나", "784": "아랍에미리트", "826": "영국", "840": "미국", "858": "우루과이",
+      "860": "우즈베키스탄", "862": "베네수엘라", "704": "베트남", "887": "예멘", "894": "잠비아", "716": "짐바브웨"
+    };
+
+    const width = 280, height = 280;
+    const svg = d3.select("#globeSvg");
+    
+    const projection = d3.geoOrthographic()
+      .scale(135)
+      .translate([width / 2, height / 2])
+      .clipAngle(90);
+
+    const path = d3.geoPath().projection(projection);
+    const graticule = d3.geoGraticule10();
+
+    let isPaused = false;
+    let rotationAngle = 0;
+    let countriesGeoData = null;
+    let currentSelectedCountryName = "";
+    let currentSelectedAlpha2 = "";
+
+    svg.append("path")
+      .datum(graticule)
+      .attr("class", "graticule")
+      .attr("d", path);
+
+    d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(world => {
+      countriesGeoData = topojson.feature(world, world.objects.countries);
+
+      svg.selectAll(".country")
+        .data(countriesGeoData.features)
+        .enter()
+        .append("path")
+        .attr("class", "country")
+        .attr("id", d => `country-${d.id}`)
+        .attr("d", path);
+
+      d3.timer(() => {
+        if (!isPaused) {
+          rotationAngle += 0.4;
+          projection.rotate([rotationAngle, -15]);
+          updateGlobe();
+        }
+      });
+    });
+
+    function updateGlobe() {
+      svg.selectAll(".graticule").attr("d", path);
+      svg.selectAll(".country").attr("d", path);
+    }
+
+    const dartContainer = document.getElementById('dartContainer');
+    const dartWrapper = document.getElementById('dartWrapper');
+    const globeViewport = document.getElementById('globeViewport');
+    const headerContainer = document.getElementById('headerContainer');
+    const guideText = document.getElementById('guideText');
+    const resultCard = document.getElementById('resultCard');
+    const destName = document.getElementById('destName');
+    const destDesc = document.getElementById('destDesc');
+    const destImg = document.getElementById('destImg');
+
+    let isDragging = false;
+    let startY = 0;
+    let dragDistance = 0;
+    let isFlying = false;
+
+    dartContainer.addEventListener('mousedown', startDrag);
+    window.addEventListener('mousemove', onDrag);
+    window.addEventListener('mouseup', endDrag);
+
+    dartContainer.addEventListener('touchstart', (e) => startDrag(e.touches[0]));
+    window.addEventListener('touchmove', (e) => onDrag(e.touches[0]));
+    window.addEventListener('touchend', endDrag);
+
+    function startDrag(e) {
+      if (isFlying) return;
+      isDragging = true;
+      startY = e.clientY;
+      dartWrapper.classList.remove('flying', 'wobbling');
+    }
+
+    function onDrag(e) {
+      if (!isDragging || isFlying) return;
+      dragDistance = Math.max(0, e.clientY - startY);
+      const pullScale = 1 + dragDistance * 0.002;
+      dartWrapper.style.transform = `translateY(${dragDistance}px) scale(${pullScale})`;
+    }
+
+    function endDrag() {
+      if (!isDragging || isFlying) return;
+      isDragging = false;
+
+      if (dragDistance > 35) {
+        shootDart();
+      } else {
+        dartWrapper.style.transform = 'translateY(0) scale(1)';
+      }
+      dragDistance = 0;
+    }
+
+    function getLandTargetCoordinates() {
+      if (!countriesGeoData) return { targetTipX: 0, targetTipY: -180, hitCountry: null };
+
+      const visibleCountries = countriesGeoData.features.filter(feature => {
+        const centroid = d3.geoCentroid(feature);
+        const projected = projection(centroid);
+        return projected && projected[0] >= 30 && projected[0] <= 250 && projected[1] >= 30 && projected[1] <= 250;
+      });
+
+      const targetPool = visibleCountries.length > 0 ? visibleCountries : countriesGeoData.features;
+
+      for (let i = 0; i < 300; i++) {
+        const randomCountry = targetPool[Math.floor(Math.random() * targetPool.length)];
+        const centroid = d3.geoCentroid(randomCountry);
+        const screenPos = projection(centroid);
+
+        if (screenPos) {
+          const targetTipX = screenPos[0] - 140;
+          const targetTipY = screenPos[1] - 320;
+
+          const geoCheck = projection.invert([screenPos[0], screenPos[1]]);
+          if (geoCheck && d3.geoContains(randomCountry, geoCheck)) {
+            return { targetTipX, targetTipY, hitCountry: randomCountry };
+          }
+        }
+      }
+
+      const fallbackCountry = targetPool[0];
+      const fallbackPos = projection(d3.geoCentroid(fallbackCountry));
+      return { 
+        targetTipX: fallbackPos ? fallbackPos[0] - 140 : 0, 
+        targetTipY: fallbackPos ? fallbackPos[1] - 320 : -180, 
+        hitCountry: fallbackCountry 
+      };
+    }
+
+    function getCountryFlagUrl(countryIdNum) {
+      const formattedId = String(countryIdNum).padStart(3, '0');
+      currentSelectedAlpha2 = isoNumericToAlpha2[formattedId] || "un";
+      return `https://flagcdn.com/w320/${currentSelectedAlpha2}.png`;
+    }
+
+    function shootDart() {
+      isFlying = true;
+      dartWrapper.classList.add('flying');
+
+      d3.selectAll('.country').classed('selected-country', false);
+
+      const { targetTipX, targetTipY, hitCountry } = getLandTargetCoordinates();
+
+      dartWrapper.style.transform = `translate(${targetTipX}px, ${targetTipY}px) scale(0.85)`;
+
+      setTimeout(() => {
+        isPaused = true;
+
+        d3.select(`#country-${hitCountry.id}`).classed('selected-country', true);
+
+        const currentRotate = projection.rotate();
+
+        d3.transition()
+          .duration(1000)
+          .tween("rotateAndFollowTipPoint", () => {
+            return function(t) {
+              const centroid = d3.geoCentroid(hitCountry);
+              const targetRotate = [-centroid[0], -centroid[1]];
+              const r = d3.interpolate(currentRotate, targetRotate)(t);
+              
+              projection.rotate(r);
+              updateGlobe();
+
+              const screenPos = projection(centroid);
+              if (screenPos) {
+                const tipX = screenPos[0] - 140;
+                const tipY = screenPos[1] - 320;
+
+                dartWrapper.style.transform = `translate(${tipX}px, ${tipY}px) scale(0.85)`;
+                dartWrapper.style.setProperty('--tx', `${tipX}px`);
+                dartWrapper.style.setProperty('--ty', `${tipY}px`);
+              }
+            };
+          })
+          .on("end", () => {
+            dartWrapper.classList.remove('flying');
+            dartWrapper.classList.add('wobbling');
+
+            // 지구본 확대와 동시에 상단 제목 글씨 위로 이동 처리
+            globeViewport.style.transformOrigin = `50% 50%`;
+            globeViewport.style.transform = 'scale(1.8)';
+            headerContainer.classList.add('shift-up');
+            guideText.classList.add('hide');
+
+            const countryId = String(hitCountry.id).padStart(3, '0');
+            currentSelectedCountryName = countryNameMap[countryId] || "자메이카";
+
+            const flagUrl = getCountryFlagUrl(hitCountry.id);
+
+            destName.textContent = `📍 ${currentSelectedCountryName}`;
+            destDesc.textContent = `${currentSelectedCountryName}(으)로 떠나는 무작위 여행지 선정 완료!`;
+            destImg.src = flagUrl;
+
+            setTimeout(() => {
+              resultCard.classList.add('show');
+            }, 300);
+          });
+
+      }, 500);
+    }
+
+    function openDetailModal() {
+      document.getElementById('modalHeroImg').src = destImg.src;
+      document.getElementById('modalTitle').textContent = `📍 ${currentSelectedCountryName}`;
+
+      const info = countryDetails[currentSelectedCountryName] || countryDetails["자메이카"];
+
+      document.getElementById('infoCapital').textContent = info.capital;
+      document.getElementById('infoFeature').textContent = info.feature;
+      document.getElementById('infoSpots').textContent = info.spots;
+      document.getElementById('infoFood').textContent = info.food;
+
+      document.getElementById('modalOverlay').classList.add('show');
+    }
+
+    function closeDetailModal() {
+      document.getElementById('modalOverlay').classList.remove('show');
+    }
+
+    function resetGame() {
+      closeDetailModal();
+      resultCard.classList.remove('show');
+      
+      // 지구본 크기 원복 및 헤더 텍스트 위치 정상화
+      globeViewport.style.transform = 'scale(1)';
+      headerContainer.classList.remove('shift-up');
+      guideText.classList.remove('hide');
+
+      d3.selectAll('.country').classed('selected-country', false);
+      
+      isPaused = false;
+
+      dartWrapper.classList.remove('flying', 'wobbling');
+      dartWrapper.style.transform = 'translateY(0) scale(1)';
+      
+      isFlying = false;
+    }
+  </script>
+</body>
+</html>
