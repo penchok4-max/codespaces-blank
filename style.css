@@ -116,7 +116,7 @@ p {
   color: #cbd5e1;
 }
 .globe-container {
-  animation: rotateGlobe 3s linear infinite;
+  animation: rotateGlobe 1s linear infinite;
 }
 
 @keyframes rotateGlobe {
