@@ -11,6 +11,13 @@
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="https://unpkg.com/topojson-client@3"></script>
   <style>
+    .globe-container {
+  animation: rotateGlobe 1s linear infinite !important;
+}
+@keyframes rotateGlobe {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
     * {
       box-sizing: border-box;
       margin: 0;
