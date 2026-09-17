@@ -10,21 +10,27 @@
 
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="https://unpkg.com/topojson-client@3"></script>
-  <style>
-/* 클래스 이름에 상관없이 페이지 내 지구본 요소를 강제로 1초만에 회전시킴 */
-svg, canvas, div[class*="globe"], .globe, .globe-container {
-  animation: rotateGlobe 1s linear infinite !important;
-}
-
-@keyframes rotateGlobe {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
+ <style>
     * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      user-select: none;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+    }
+
+    svg, canvas, div[class*="globe"], .globe, .globe-container {
+        animation: rotateGlobe 1s linear infinite !important;
+    }
+
+    @keyframes rotateGlobe {
+        from {
+            transform: rotate(0deg);
+        }
+        to {
+            transform: rotate(360deg);
+        }
+    }
+</style>
     }
 
     body {
