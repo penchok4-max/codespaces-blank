@@ -87,14 +87,24 @@
     }
 
     .graticule { fill: none; stroke: rgba(255, 255, 255, 0.15); stroke-width: 0.5px; }
-    .country { fill: #22c55e; stroke: #15803d; stroke-width: 0.5px; transition: fill 0.3s ease; }
+ .country { 
+      stroke: #ffffff; 
+      stroke-width: 0.5px; 
+      transition: fill 0.3s ease; 
+    }
     
+    /* 현실적인 지구본 지형 색상 (어스 톤) */
+   .country:nth-child(5n+1) { fill: #d4a5a5; } /* 차분한 인디 핑크 */
+    .country:nth-child(5n+2) { fill: #dcbfa6; } /* 부드러운 베이지 샌드 */
+    .country:nth-child(5n+3) { fill: #d9d09b; } /* 톤 다운된 머스타드 */
+    .country:nth-child(5n+4) { fill: #a3c1ad; } /* 은은한 세이지 그린 */
+    .country:nth-child(5n+5) { fill: #9bb7d4; } /* 안개 낀 더스티 블루 */
+    /* 다트가 꽂힌 나라 강조 */
     .country.selected-country {
       fill: #ef4444 !important;
       stroke: #b91c1c !important;
       stroke-width: 1px;
     }
-
     .dart-container {
       position: absolute;
       top: 320px;
