@@ -649,7 +649,7 @@
 
       d3.timer(() => {
         if (!isPaused) {
-          rotationAngle += 1;
+          rotationAngle += 2;
           projection.rotate([rotationAngle, -15]);
           updateGlobe();
         }
@@ -723,6 +723,7 @@
 
       for (let i = 0; i < 300; i++) {
         const randomCountry = targetPool[Math.floor(Math.random() * targetPool.length)];
+        if (!countryNameMap[randomCountry.id]) continue;
         const centroid = d3.geoCentroid(randomCountry);
         const screenPos = projection(centroid);
 
