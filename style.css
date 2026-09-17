@@ -28,6 +28,7 @@ p {
 }
 
 .globe-container {
+  animation: rotateGlobe 5s linear infinite;
   position: relative;
   width: 300px;
   height: 300px;
@@ -113,4 +114,16 @@ p {
 .result-desc {
   font-size: 0.95rem;
   color: #cbd5e1;
+}
+@keyframes rotateGlobe {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.globe-container {
+  animation: rotateGlobe 3s linear infinite;
+}
+
+@keyframes rotateGlobe {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
